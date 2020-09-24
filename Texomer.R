@@ -18,8 +18,10 @@ library(bbmle,lib.loc=paste(path,"/library",sep=""))
 library(emdbook,lib.loc=paste(path,"/library",sep=""))
 library(copynumber,lib.loc=paste(path,"/library",sep=""))
 library(TitanCNA,lib.loc=paste(path,"/library",sep=""))
-library(facets,lib.loc=paste(path,"/library",sep=""))
-library(mixtools,lib.loc=paste(path,"/library",sep=""))
+library(facets)
+library(mixtools)
+# library(facets,lib.loc=paste(path,"/library",sep=""))
+# library(mixtools,lib.loc=paste(path,"/library",sep=""))
 library(sfsmisc,lib.loc=paste(path,"/library",sep=""))
 source(paste(path,"/ASCAT.R",sep=""))
 source(paste(path,"/DNAfunction.R",sep=""))
@@ -30,10 +32,19 @@ source(paste(path,"/sequenza.R",sep=""))
 temppath=paste(outpath,"/temp",sep="")
 caseid=strsplit(SNPinput,split="/")[[1]][length(strsplit(SNPinput,split="/")[[1]])]
 if (length(args)==6){
-	if (optindex==1){
-		DNAout=try(DNArun(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+	savedFile = paste(outpath,"/DNAOut.RData",sep="")
+	if(file.exists(savedFile)){
+		print("Read existing data")
+		load(savedFile)
 	}else{
-		DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+		if (optindex==1){
+			print("Run with Iter")
+			DNAout=try(DNArun(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+		}else{
+			print("Run without Iter")
+			DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+			save(DNAout, file = paste(outpath,"/df.RData",sep=""))
+		}
 	}
 	if (!is.null(names(DNAout))){
 		DNAout=Heterogeneity(DNAout)

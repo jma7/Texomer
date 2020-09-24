@@ -337,23 +337,26 @@ def main():
                 #outputname=case
     else:
         RNAname = options.RNA
-        RNAname=getPath(RNAname)
-        case=RNAname.split("/")[len(RNAname.split("/"))-1]
-        print "Transfer bam to sam"
-        os.chdir(outpath+"/temp")
-        os.system(samtools+ " index "+RNAname)
-        os.system(samtools+" view "+RNAname+" > "+RNAname+".sam")
-        samfilename=RNAname+".sam"
-        outputname=case+".SNV"
-        if os.path.exists(outputname):
-            os.remove(outputname)
-        print "Align mutations to RNA data"
-        SNVexp(germline=germlinename,somatic=somaticname,samfile=samfilename,outputname=outputname,case=case,bedtools=bedtools)
-        os.system("rm "+RNAname+".sam")
-        os.system("rm "+RNAname+".bai")
-        RNAname=outputname
+        if RNAname.endswith(".SNV") and os.path.exists(RNAname):
+            print "RNA SNV file provided"
+        else:
+            RNAname=getPath(RNAname)
+            case=RNAname.split("/")[len(RNAname.split("/"))-1]
+            print "Transfer bam to sam"
+            os.chdir(outpath+"/temp")
+            os.system(samtools+ " index "+RNAname)
+            os.system(samtools+" view "+RNAname+" > "+RNAname+".sam")
+            samfilename=RNAname+".sam"
+            outputname=case+".SNV"
+            if os.path.exists(outputname):
+                os.remove(outputname)
+            print "Align mutations to RNA data"
+            SNVexp(germline=germlinename,somatic=somaticname,samfile=samfilename,outputname=outputname,case=case,bedtools=bedtools)
+            os.system("rm "+RNAname+".sam")
+            os.system("rm "+RNAname+".bai")
+            # RNAname=outputname
     print "Infering at DNA level"
-    if not options.iter:
+    if options.iter is None: 
         optindex=1
     else:
         optindex=options.iter

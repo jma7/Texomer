@@ -57,7 +57,7 @@ ASCATout<-function(ASCATdata,sample,chromosome){
 	segment=data.frame(chr=segment$chr,startpos=segment$startpos,endpos=segment$endpos,nMajor=segment$nMajor,nMinor=segment$nMinor)
 	alpha=ascat.output$aberrantcellfraction
 	ploidy=ascat.output$ploidy
-	DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy)
+	DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy,method="ASCAT")
 	#save(DNAout,file=paste(sample,".somaticCN.Rdata",sep=""))
 	return(DNAout)
 }
@@ -526,7 +526,7 @@ sequenzRun<-function(data,sample,chromosome){
 	index=which(segment$nMajor==0&segment$nMinor==0)
 	rowindex=setdiff(c(1:dim(segment)[1]),index)
 	segment=segment[rowindex,]
-	DNAout=list(alpha=alpha,ploidy=ploidy,segment=segment)
+	DNAout=list(alpha=alpha,ploidy=ploidy,segment=segment,method="sequenz")
 	return(DNAout)
 }
 
@@ -677,13 +677,16 @@ TITANout<-function(DNAinput,chromosome){
 	ploidy <- tail(convergeParams$phi, 1)
 	normal <- tail(convergeParams$n, 1)
 	#mean(as.numeric(segs$Cellular_Frequency[!is.na(segs$Cellular_Frequency)])*(1-normal))
-	DNAout=list(segment=segs,ploidy=ploidy,alpha=1-normal)
+	DNAout=list(segment=segs,ploidy=ploidy,alpha=1-normal,method="TITAN")
 	return(DNAout)
 }
 
 
 FACETSout<-function(DNAinput){
 	facetsinput=data.frame(chr=DNAinput$chr,pos=DNAinput$pos,Nsum=DNAinput$Nsum,NAP=DNAinput$altNumN,Tsum=DNAinput$Tsum,TAP=DNAinput$altNumT)
+# 	facetsinput=data.frame(Chromosome=DNAinput$chr,Position=DNAinput$pos,NOR.DP=DNAinput$Nsum,NOR.RD=DNAinput$altNumN,TUM.DP=DNAinput$Tsum,TUM.RD=DNAinput$altNumT)^M
+# +   facetsinput$Chromosome=gsub("chr","",facetsinput$Chromosome)
+	
 	write.table(facetsinput,"FACETS.input",sep="\t",col.names=FALSE,row.names=FALSE,quote=FALSE)
 	set.seed(1234)
 	xx=preProcSample(file="FACETS.input")
@@ -694,7 +697,7 @@ FACETSout<-function(DNAinput){
 		ploidy=fit$ploidy
 		segment=data.frame(chr=fit$cncf$chrom,startpos=fit$start,endpos=fit$end,nMajor=(fit$cncf$tcn.em-fit$cncf$lcn.em),nMinor=fit$cncf$lcn.em)
 		segment=segment[!is.na(segment$nMajor)&!is.na(segment$nMinor)&segment$nMajor!=0&segment$nMinor!=0,]
-		DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy)
+		DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy,method="FACET")
 		return (DNAout)
 	}
 }
@@ -709,19 +712,19 @@ ASCATrun<-function(DNAinput,sample,chromosome){
 }
 
 
-DNACNA<-function(DNAinput,sample,tempth,chromosome,i){
-	if (i==1){
+DNACNA<-function(DNAinput,sample,tempth,chromosome,method){
+	if (method=="ASCAT"){
 		print.noquote("Run germline data")
 		ASCATres<-try(ASCATrun(DNAinput,sample,chromosome),silent=TRUE)
 		return(ASCATres)
-	}else if (i==2){
+	}else if (method=="TITAN"){
 		registerDoMC(cores = 4)
 		TITANres<-try(TITANout(DNAinput=DNAinput,chromosome=chromosome),silent=TRUE)
 		return (TITANres)
-	}else if (i ==3){
+	}else if (method == "FACETS"){
 		FACETSres<-try(FACETSout(DNAinput=DNAinput),silent=TRUE)
 		return (FACETSres)
-	}else{
+	}else if (method == "sequenz"){
 		sequenzres<-try(sequenzRun(data=DNAinput,sample=sample,chromosome=chromosome),silent=TRUE)
 		return (sequenzres)
 	}
@@ -1014,7 +1017,8 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 		#alength=nchar(as.character(DNAinput$alt))
 		#DNAinput=DNAinput[rlength==1&alength==1,]
 		setwd(temppath)
-		methods=c("ASCAT","TITAN","FACETS","sequenz")
+		#methods=c("ASCAT","TITAN","FACETS","sequenz")
+		methods=c("ASCAT","sequenz")
 		somaticdata=read.csv(somaticinput,header=TRUE,sep="\t")
 		colnames(somaticdata)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
 		somaticdata$Tsum=somaticdata$altNumT+somaticdata$refNumT
@@ -1025,21 +1029,21 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 		#somaticdata=somaticdata[rlength==1&alength==1,]
 		registerDoMC(cores = 4)
 		times=1000
-		res=foreach(i = 1:4) %dopar% DNACNA(DNAinput=DNAinput,sample=sample,tempth=temppath,chromosome=chromosome,i)
+		res=foreach(i = 1:length(methods)) %dopar% DNACNA(DNAinput=DNAinput,sample=sample,tempth=temppath,chromosome=chromosome,methods[i])
 		newmethod=c()
 		newres=list()
 		k=1
 		DNAres=list()
-		for (i in 1:4){
+		for (i in 1:length(methods)){
 			if (!is.null(res[[i]])){
 				if (!is.null(res[[i]]$alpha)){
-					if (i ==1 ){
+					if (res[[i]]$method == "ASCAT"){
 						DNAres$ASCAT=res[[i]]
-					}else if (i ==2){
+					}else if (res[[i]]$method == "TITAN"){
 						DNAres$TITAN=res[[i]]
-					}else if (i == 3){
+					}else if (res[[i]]$method == "FACETS"){
 						DNAres$FACETS=res[[i]]
-					}else{
+					}else if (res[[i]]$method == "sequenz"){
 						DNAres$sequenza=res[[i]]
 					}
 					newmethod[k]=methods[i]
@@ -1051,7 +1055,7 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 		print.noquote("Somatic mutation copy number")
 		somaticres<-foreach(i =1:length(newmethod)) %dopar% somaticCN(res=newres,i,somaticdata=somaticdata,method=newmethod)
 		somaticindex=0
-		for (i in 1:4){
+		for (i in 1:length(methods)){
 			if (!is.null(somaticres[[i]])){
 				if (dim(somaticres[[i]])[1]>0){
 					somaticindex=1
@@ -1168,6 +1172,7 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 				ll[j]=dim(DNAres[[j]]$segment)[1]
 			}
 			DNAout=DNAres[[which.max(ll)]]
+
 			return(DNAout)
 		}
 	}else{
