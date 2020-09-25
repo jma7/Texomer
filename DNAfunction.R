@@ -683,21 +683,22 @@ TITANout<-function(DNAinput,chromosome){
 
 
 FACETSout<-function(DNAinput){
-	facetsinput=data.frame(chr=DNAinput$chr,pos=DNAinput$pos,Nsum=DNAinput$Nsum,NAP=DNAinput$altNumN,Tsum=DNAinput$Tsum,TAP=DNAinput$altNumT)
-# 	facetsinput=data.frame(Chromosome=DNAinput$chr,Position=DNAinput$pos,NOR.DP=DNAinput$Nsum,NOR.RD=DNAinput$altNumN,TUM.DP=DNAinput$Tsum,TUM.RD=DNAinput$altNumT)^M
-# +   facetsinput$Chromosome=gsub("chr","",facetsinput$Chromosome)
-	
+	print("Run facets")
+	#facetsinput=data.frame(Chromosome=DNAinput$chr,Position=DNAinput$pos,Nsum=DNAinput$Nsum,NAP=DNAinput$altNumN,Tsum=DNAinput$Tsum,TAP=DNAinput$altNumT)
+    facetsinput=data.frame(Chromosome=DNAinput$chr,Position=DNAinput$pos,NOR.DP=DNAinput$Nsum,NOR.RD=DNAinput$altNumN,TUM.DP=DNAinput$Tsum,TUM.RD=DNAinput$altNumT)
+    facetsinput$Chromosome=gsub("chr","",facetsinput$Chromosome)
 	write.table(facetsinput,"FACETS.input",sep="\t",col.names=FALSE,row.names=FALSE,quote=FALSE)
 	set.seed(1234)
-	xx=preProcSample(file="FACETS.input")
+	xx=preProcSample(facetsinput)
+	# xx=preProcSample(file="FACETS.input")
 	oo=procSample(xx,cval=150)
 	fit<-try(emcncf(oo),silent=TRUE)
 	alpha=fit$purity
 	if (!is.na(alpha)){
 		ploidy=fit$ploidy
-		segment=data.frame(chr=fit$cncf$chrom,startpos=fit$start,endpos=fit$end,nMajor=(fit$cncf$tcn.em-fit$cncf$lcn.em),nMinor=fit$cncf$lcn.em)
+		segment=data.frame(chr=fit$cncf$chrom,startpos=fit$cncf$start,endpos=fit$cncf$end,nMajor=(fit$cncf$tcn.em-fit$cncf$lcn.em),nMinor=fit$cncf$lcn.em)
 		segment=segment[!is.na(segment$nMajor)&!is.na(segment$nMinor)&segment$nMajor!=0&segment$nMinor!=0,]
-		DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy,method="FACET")
+		DNAout=list(alpha=alpha,segment=segment,ploidy=ploidy,method="FACETS")
 		return (DNAout)
 	}
 }
@@ -1018,7 +1019,7 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 		#DNAinput=DNAinput[rlength==1&alength==1,]
 		setwd(temppath)
 		#methods=c("ASCAT","TITAN","FACETS","sequenz")
-		methods=c("ASCAT","sequenz")
+		methods=c("ASCAT","FACETS","sequenz")
 		somaticdata=read.csv(somaticinput,header=TRUE,sep="\t")
 		colnames(somaticdata)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
 		somaticdata$Tsum=somaticdata$altNumT+somaticdata$refNumT
