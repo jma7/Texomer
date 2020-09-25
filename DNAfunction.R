@@ -826,179 +826,193 @@ subcloneP<-function(x){
 
 
 
-DNArun<-function(SNPinput,somaticinput,sample,temppath){
-	DNAinput=read.csv(SNPinput,sep="\t",header=TRUE)
-	colnames(DNAinput)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
-	chromosome=paste("chr",c(1:22,"X","Y"),sep="")
-	if (length(levels(factor(DNAinput$chr)))>5){
-		DNAinput$Tsum=DNAinput$refNumT+DNAinput$altNumT
-		DNAinput$Nsum=DNAinput$refNumN+DNAinput$altNumN
-		DNAinput=DNAinput[DNAinput$Tsum!=0,]
-		DNAinput$tfrac=(DNAinput$altNumT)/(DNAinput$Tsum)
-		DNAinput$nfrac=(DNAinput$altNumN)/(DNAinput$Nsum)
-		DNAinput$TlogR=log2(DNAinput$Tsum/DNAinput$Nsum)
-		DNAinput$BAF[DNAinput$tfrac>=0.5]=DNAinput$tfrac[DNAinput$tfrac>=0.5]
-		DNAinput$BAF[DNAinput$tfrac<0.5]=1-DNAinput$tfrac[DNAinput$tfrac<0.5]
-		DNAinput$Ratio=(DNAinput$altNumT+DNAinput$refNumT)/(DNAinput$altNumN+DNAinput$refNumN)
-		DNAinput=DNAinput[DNAinput$Tsum>=10&DNAinput$Nsum>=10,]
-		DNAinput=DNAinput[sapply(as.character(DNAinput$chr),nchar)<=5,]
-		#rlength=nchar(as.character(DNAinput$ref))
-		#alength=nchar(as.character(DNAinput$alt))
-		#DNAinput=DNAinput[rlength==1&alength==1,]
-		setwd(temppath)
-		methods=c("ASCAT","TITAN","FACETS","sequenz")
-		somaticdata=read.csv(somaticinput,header=TRUE,sep="\t")
-		colnames(somaticdata)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
-		somaticdata$Tsum=somaticdata$altNumT+somaticdata$refNumT
-		somaticdata=somaticdata[somaticdata$Tsum>=10,]
-		somaticdata$tfrac=somaticdata$altNumT/somaticdata$Tsum
-		#rlength=nchar(as.character(somaticdata$ref))
-		#alength=nchar(as.character(somaticdata$alt))
-		#somaticdata=somaticdata[rlength==1&alength==1,]
-		registerDoMC(cores = 4)
-		times=1000
-		res=foreach(i = 1:4) %dopar% DNACNA(DNAinput=DNAinput,sample=sample,tempth=temppath,chromosome=chromosome,i)
-		print.noquote("Somatic mutation copy number")
-		somaticres<-foreach(i =1:length(res)) %dopar% somaticCN(res=res,i,somaticdata=somaticdata,method=methods)
-		somaticindex=0
-		for (i in 1:length(somaticres)){
-			if (!is.null(somaticres[[i]])){
-				if (dim(somaticres[[i]])[1]>0){
-					somaticindex=1
-					break
-				}
-			}
-		}
-		if (somaticindex!=0){
-			randomdata<-foreach(i=1:length(somaticres)) %dopar% randomSample(data=data.frame(Tsum=somaticres[[i]]$Tsum,tfrac=somaticres[[i]]$tfrac),times=times)
-			randomout<-foreach(i =1:length(somaticres)) %dopar% randomCN(res,i,randomdata,somaticres,method=methods)
-			aveDIF<-foreach(i=1:length(somaticres)) %dopar% randomDIF(randomout,somaticres,i)
-			realDIF<-foreach(i=1:length(somaticres)) %dopar% realDiff(somaticres,i)
-			realsub<-foreach(i=1:length(somaticres)) %dopar% realSub(somaticres,i)
-			randomsub<-foreach(i = 1:length(somaticres)) %dopar% subcloneP(x=randomout[[i]])
-			PDl=list()
-			PSl=list()
-			for (i in 1:length(realDIF)){
-				if (!is.null(realDIF[[i]])){
-					PDl[[i]]=1-length(aveDIF[[i]][aveDIF[[i]]>=realDIF[[i]]])/length(aveDIF[[i]])
-					PSl[[i]]=length(randomsub[[i]][randomsub[[i]]<sum(somaticres[[i]]$SACN==0)])/times
-				}
-			}
-			modelindex=c()
-			k=1
-			for (i in 1:length(PDl)){
-				if (!is.null(PDl[[i]])){
-					if(!is.na(PDl[[i]])){
-						modelindex[k]=i
-						k=k+1
-					}
-				}
-			}
-			PD=c()
-			PS=c()
-			for (k in 1:length(modelindex)){
-				PD[k]=PDl[[modelindex[k]]]
-				PS[k]=PSl[[modelindex[k]]]
-			}
-			minimum=min(PD+PS)
-			selmeth=methods[modelindex[which(PD+PS==minimum)]]
-			if ("ASCAT" %in% selmeth){
-				DNAout=res[[1]]
-				DNAalpha=res[[1]]$alpha
-				DNAploidy=res[[1]]$ploidy
-				segment=res[[1]]$segment
-				somaticres=somaticres[[1]]
-				realDIF=realDIF[[1]]
-				realsub=realsub[[1]]
-				randomdata=randomdata[[1]]
-				PD=PDl[[1]]
-				PS=PSl[[1]]
-				resmthod="ASCAT"
-			}else if ("FACETS" %in% selmeth){
-				DNAout=res[[3]]
-				DNAalpha=res[[3]]$alpha
-				DNAploidy=res[[3]]$ploidy
-				segment=res[[3]]$segment
-				segment=data.frame(chr=paste("chr",segment$chr,sep=""),startpos=segment$startpos,endpos=segment$endpos,nMajor=segment$nMajor,nMinor=segment$nMinor)
-				somaticres=somaticres[[3]]
-				realDIF=realDIF[[3]]
-				realsub=realsub[[3]]
-				randomdata=randomdata[[3]]
-				PD=PDl[[3]]
-				PS=PSl[[3]]
-				resmthod="FACETS"
-			}else if ("TITAN" %in% selmeth){
-				DNAout=res[[2]]
-				DNAalpha=res[[2]]$alpha
-				DNAploidy=res[[2]]$ploidy
-				segment=res[[2]]$segment
-				segment=data.frame(chr=paste("chr",segment$Chromosome,sep=""),startpos=as.numeric(as.character(segment$Start_Position.bp.)),endpos=as.numeric(as.character(segment$End_Position.bp.)),nMajor=segment$MajorCN,nMinor=segment$MinorCN)
-				somaticres=somaticres[[2]]
-				realDIF=realDIF[[2]]
-				realsub=realsub[[2]]
-				randomdata=randomdata[[2]]
-				PD=PDl[[2]]
-				PS=PSl[[2]]
-				resmthod="TITAN"
-			}else{
-				DNAout=res[[4]]
-				DNAalpha=res[[4]]$alpha
-				DNAploidy=res[[4]]$ploidy
-				segment=res[[4]]$segment
-				somaticres=somaticres[[4]]
-				realDIF=realDIF[[4]]
-				realsub=realsub[[4]]
-				randomdata=randomdata[[4]]
-				PD=PDl[[4]]
-				PS=PSl[[4]]
-				resmthod="sequenz"
-			}
-			DNAout=list()
-			DNAout$segment=segment
-			DNAout$alpha=DNAalpha
-			DNAout$ploidy=DNAploidy
-			DNAout$somatic=somaticres
-			DNAout$method=resmthod
-			if (PD >= 0.05 | PS >= 0.05){
-				print.noquote("Iter")
-				iterout=iterOPT(SNP=DNAinput,somatic=somaticres,segment=segment,realDIF=realDIF,realsub=realsub,randomdata=randomdata,times=times,PD=PD,PS=PS,DNAalpha=DNAalpha,cutoff=50)
-				if (length(iterout)==0){
-					return(DNAout)
-				}else{
-					iterout$method=resmthod
-					return(iterout)
-				}
-			}else{
-				return(DNAout)
-			}
+# DNArun<-function(SNPinput,somaticinput,sample,temppath){
+# 	DNAinput=read.csv(SNPinput,sep="\t",header=TRUE)
+# 	colnames(DNAinput)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
+# 	chromosome=paste("chr",c(1:22,"X","Y"),sep="")
+# 	if (length(levels(factor(DNAinput$chr)))>5){
+# 		DNAinput$Tsum=DNAinput$refNumT+DNAinput$altNumT
+# 		DNAinput$Nsum=DNAinput$refNumN+DNAinput$altNumN
+# 		DNAinput=DNAinput[DNAinput$Tsum!=0,]
+# 		DNAinput$tfrac=(DNAinput$altNumT)/(DNAinput$Tsum)
+# 		DNAinput$nfrac=(DNAinput$altNumN)/(DNAinput$Nsum)
+# 		DNAinput$TlogR=log2(DNAinput$Tsum/DNAinput$Nsum)
+# 		DNAinput$BAF[DNAinput$tfrac>=0.5]=DNAinput$tfrac[DNAinput$tfrac>=0.5]
+# 		DNAinput$BAF[DNAinput$tfrac<0.5]=1-DNAinput$tfrac[DNAinput$tfrac<0.5]
+# 		DNAinput$Ratio=(DNAinput$altNumT+DNAinput$refNumT)/(DNAinput$altNumN+DNAinput$refNumN)
+# 		DNAinput=DNAinput[DNAinput$Tsum>=10&DNAinput$Nsum>=10,]
+# 		DNAinput=DNAinput[sapply(as.character(DNAinput$chr),nchar)<=5,]
+# 		#rlength=nchar(as.character(DNAinput$ref))
+# 		#alength=nchar(as.character(DNAinput$alt))
+# 		#DNAinput=DNAinput[rlength==1&alength==1,]
+# 		setwd(temppath)
+# 		methods=c("ASCAT","FACETS","sequenz")
+# 		somaticdata=read.csv(somaticinput,header=TRUE,sep="\t")
+# 		colnames(somaticdata)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
+# 		somaticdata$Tsum=somaticdata$altNumT+somaticdata$refNumT
+# 		somaticdata=somaticdata[somaticdata$Tsum>=10,]
+# 		somaticdata$tfrac=somaticdata$altNumT/somaticdata$Tsum
 
-		}else{
-			DNAres=list()
-			k=1
-			for (i in 1:4){
-				if (mode(res[[i]])=="list"){
-					if (!is.null(res[[i]]$alpha)){
-						res[[i]]$method=methods[i]
-						DNAres[[k]]=res[[i]]
-						k=k+1
-					}
-				}
-			}
-			ll=c()
-			for (j in 1:length(DNAres)){
-				ll[j]=dim(DNAres[[j]]$segment)[1]
-			}
-			DNAout=DNAres[[which.max(ll)]]
-			return(DNAout)
-		}
-	}else{
-			print.noquote(paste(sample,":Germline data is insuccifient",sep=""))
-	}
+# 		#rlength=nchar(as.character(somaticdata$ref))
+# 		#alength=nchar(as.character(somaticdata$alt))
+# 		#somaticdata=somaticdata[rlength==1&alength==1,]
+# 		registerDoMC(cores = 4)
+# 		times=1000
+# 		res=foreach(i = 1:length(methods)) %dopar% DNACNA(DNAinput=DNAinput,sample=sample,tempth=temppath,chromosome=chromosome,methods[i])
+# 		print(res)
+# 		print.noquote("Somatic mutation copy number")
+# 		somaticres<-foreach(i =1:length(res)) %dopar% somaticCN(res=res,i,somaticdata=somaticdata,method=methods)
+# 		somaticindex=0
+# 		for (i in 1:length(somaticres)){
+# 			if (!is.null(somaticres[[i]])){
+# 				if (dim(somaticres[[i]])[1]>0){
+# 					somaticindex=1
+# 					break
+# 				}
+# 			}
+# 		}
+# 		if (somaticindex!=0){
+# 			randomdata<-foreach(i=1:length(somaticres)) %dopar% randomSample(data=data.frame(Tsum=somaticres[[i]]$Tsum,tfrac=somaticres[[i]]$tfrac),times=times)
+# 			randomout<-foreach(i =1:length(somaticres)) %dopar% randomCN(res,i,randomdata,somaticres,method=methods)
+# 			aveDIF<-foreach(i=1:length(somaticres)) %dopar% randomDIF(randomout,somaticres,i)
+# 			realDIF<-foreach(i=1:length(somaticres)) %dopar% realDiff(somaticres,i)
+# 			realsub<-foreach(i=1:length(somaticres)) %dopar% realSub(somaticres,i)
+# 			randomsub<-foreach(i = 1:length(somaticres)) %dopar% subcloneP(x=randomout[[i]])
+# 			PDl=list()
+# 			PSl=list()
+# 			for (i in 1:length(realDIF)){
+# 				if (!is.null(realDIF[[i]])){
+# 					PDl[[i]]=1-length(aveDIF[[i]][aveDIF[[i]]>=realDIF[[i]]])/length(aveDIF[[i]])
+# 					PSl[[i]]=length(randomsub[[i]][randomsub[[i]]<sum(somaticres[[i]]$SACN==0)])/times
+# 				}
+# 			}
+# 			modelindex=c()
+# 			k=1
+# 			for (i in 1:length(PDl)){
+# 				if (!is.null(PDl[[i]])){
+# 					if(!is.na(PDl[[i]])){
+# 						modelindex[k]=i
+# 						k=k+1
+# 					}
+# 				}
+# 			}
+# 			PD=c()
+# 			PS=c()
+# 			for (k in 1:length(modelindex)){
+# 				PD[k]=PDl[[modelindex[k]]]
+# 				PS[k]=PSl[[modelindex[k]]]
+# 			}
+# 			minimum=min(PD+PS)
+# 			selmeth=methods[modelindex[which(PD+PS==minimum)]]
+# 			print(selmeth)
+# 			if ("ASCAT" %in% selmeth){
+# 				DNAout=res[[1]]
+# 				DNAalpha=res[[1]]$alpha
+# 				DNAploidy=res[[1]]$ploidy
+# 				segment=res[[1]]$segment
+# 				somaticres=somaticres[[1]]
+# 				realDIF=realDIF[[1]]
+# 				realsub=realsub[[1]]
+# 				randomdata=randomdata[[1]]
+# 				PD=PDl[[1]]
+# 				PS=PSl[[1]]
+# 				resmthod="ASCAT"
+# 				DNAout=res[[which(method=="ASCAT")]]
+# 				DNAalpha=newres[[which(newmethod=="ASCAT")]]$alpha
+# 				DNAploidy=newres[[which(newmethod=="ASCAT")]]$ploidy
+# 				segment=newres[[which(newmethod=="ASCAT")]]$segment
+# 				somaticres=somaticres[[which(newmethod=="ASCAT")]]
+# 				realDIF=realDIF[[which(newmethod=="ASCAT")]]
+# 				realsub=realsub[[which(newmethod=="ASCAT")]]
+# 				randomdata=randomdata[[which(newmethod=="ASCAT")]]
+# 				PD=PDl[[which(newmethod=="ASCAT")]]
+# 				PS=PSl[[which(newmethod=="ASCAT")]]
+# 				resmthod="ASCAT"
+# 			}else if ("FACETS" %in% selmeth){
+# 				DNAout=res[[3]]
+# 				DNAalpha=res[[3]]$alpha
+# 				DNAploidy=res[[3]]$ploidy
+# 				segment=res[[3]]$segment
+# 				segment=data.frame(chr=paste("chr",segment$chr,sep=""),startpos=segment$startpos,endpos=segment$endpos,nMajor=segment$nMajor,nMinor=segment$nMinor)
+# 				somaticres=somaticres[[3]]
+# 				realDIF=realDIF[[3]]
+# 				realsub=realsub[[3]]
+# 				randomdata=randomdata[[3]]
+# 				PD=PDl[[3]]
+# 				PS=PSl[[3]]
+# 				resmthod="FACETS"
+# 			}else if ("TITAN" %in% selmeth){
+# 				DNAout=res[[2]]
+# 				DNAalpha=res[[2]]$alpha
+# 				DNAploidy=res[[2]]$ploidy
+# 				segment=res[[2]]$segment
+# 				segment=data.frame(chr=paste("chr",segment$Chromosome,sep=""),startpos=as.numeric(as.character(segment$Start_Position.bp.)),endpos=as.numeric(as.character(segment$End_Position.bp.)),nMajor=segment$MajorCN,nMinor=segment$MinorCN)
+# 				somaticres=somaticres[[2]]
+# 				realDIF=realDIF[[2]]
+# 				realsub=realsub[[2]]
+# 				randomdata=randomdata[[2]]
+# 				PD=PDl[[2]]
+# 				PS=PSl[[2]]
+# 				resmthod="TITAN"
+# 			}else{
+# 				DNAout=res[[4]]
+# 				DNAalpha=res[[4]]$alpha
+# 				DNAploidy=res[[4]]$ploidy
+# 				segment=res[[4]]$segment
+# 				somaticres=somaticres[[4]]
+# 				realDIF=realDIF[[4]]
+# 				realsub=realsub[[4]]
+# 				randomdata=randomdata[[4]]
+# 				PD=PDl[[4]]
+# 				PS=PSl[[4]]
+# 				resmthod="sequenz"
+# 			}
+# 			DNAout=list()
+# 			DNAout$segment=segment
+# 			DNAout$alpha=DNAalpha
+# 			DNAout$ploidy=DNAploidy
+# 			DNAout$somatic=somaticres
+# 			DNAout$method=resmthod
+# 			if (PD >= 0.05 | PS >= 0.05){
+# 				print.noquote("Iter")
+# 				iterout=iterOPT(SNP=DNAinput,somatic=somaticres,segment=segment,realDIF=realDIF,realsub=realsub,randomdata=randomdata,times=times,PD=PD,PS=PS,DNAalpha=DNAalpha,cutoff=50)
+# 				if (length(iterout)==0){
+# 					return(DNAout)
+# 				}else{
+# 					iterout$method=resmthod
+# 					return(iterout)
+# 				}
+# 			}else{
+# 				return(DNAout)
+# 			}
 
-}
+# 		}else{
+# 			DNAres=list()
+# 			k=1
+# 			for (i in 1:4){
+# 				if (mode(res[[i]])=="list"){
+# 					if (!is.null(res[[i]]$alpha)){
+# 						res[[i]]$method=methods[i]
+# 						DNAres[[k]]=res[[i]]
+# 						k=k+1
+# 					}
+# 				}
+# 			}
+# 			ll=c()
+# 			for (j in 1:length(DNAres)){
+# 				ll[j]=dim(DNAres[[j]]$segment)[1]
+# 			}
+# 			DNAout=DNAres[[which.max(ll)]]
+# 			return(DNAout)
+# 		}
+# 	}else{
+# 			print.noquote(paste(sample,":Germline data is insuccifient",sep=""))
+# 	}
+
+# }
 
 
-DNArun1<-function(SNPinput,somaticinput,sample,temppath){
+DNArun1<-function(SNPinput,somaticinput,sample,temppath, optindex){
 	DNAinput=read.csv(SNPinput,sep="\t",header=TRUE)
 	colnames(DNAinput)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
 	chromosome=paste("chr",c(1:22,"X","Y"),sep="")
@@ -1155,7 +1169,22 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath){
 			DNAout$somatic=somaticres
 			DNAout$method=resmthod
 			#DNAres$DNAout=DNAout
-			return(DNAout)
+			if (optindex==0){
+				return(DNAout)
+			}else{
+				if (PD >= 0.05 | PS >= 0.05){
+					print.noquote("Iter")
+					iterout=iterOPT(SNP=DNAinput,somatic=somaticres,segment=segment,realDIF=realDIF,realsub=realsub,randomdata=randomdata,times=times,PD=PD,PS=PS,DNAalpha=DNAalpha,cutoff=50)
+					if (length(iterout)==0){
+						return(DNAout)
+					}else{
+						iterout$method=resmthod
+						return(iterout)
+					}
+				}else{
+					return(DNAout)
+				}
+			}		
 		}else{
 			DNAres=list()
 			k=1

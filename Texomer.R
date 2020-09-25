@@ -37,14 +37,17 @@ if (length(args)==6){
 		print("Read existing data")
 		load(savedFile)
 	}else{
-		if (optindex==1){
-			print("Run with Iter")
-			DNAout=try(DNArun(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
-		}else{
-			print("Run without Iter")
-			DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
-			save(DNAout, file = paste(outpath,"/df.RData",sep=""))
-		}
+		# if (optindex==1){
+		# 	print("Run with Iter")
+		# 	DNAout=try(DNArun(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+		# }else{
+		# 	print("Run without Iter")
+		# 	DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
+		# 	save(DNAout, file = paste(outpath,"/df.RData",sep=""))
+		# }
+
+		DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath,optindex=1),silent=TRUE)
+		save(DNAout, file = paste(outpath,"/df.RData",sep=""))
 	}
 	if (!is.null(names(DNAout))){
 		DNAout=Heterogeneity(DNAout)
