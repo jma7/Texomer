@@ -45,9 +45,8 @@ if (length(args)==6){
 		# 	DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath),silent=TRUE)
 		# 	save(DNAout, file = paste(outpath,"/df.RData",sep=""))
 		# }
-
-		DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath,optindex=1),silent=TRUE)
-		save(DNAout, file = paste(outpath,"/df.RData",sep=""))
+		DNAout=try(DNArun1(SNPinput=SNPinput,somaticinput=somaticinput,sample=caseid,temppath=temppath,optindex=optindex),silent=TRUE)
+		# save(DNAout, file = paste(outpath,"/df.RData",sep=""))
 	}
 	if (!is.null(names(DNAout))){
 		DNAout=Heterogeneity(DNAout)

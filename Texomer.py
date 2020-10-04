@@ -360,6 +360,7 @@ def main():
         optindex=1
     else:
         optindex=options.iter
+    print "Rscript "+Texomerpath+"/Texomer.R "+germlinename+" "+somaticname+" "+RNAname+" "+Texomerpath+" "+outpath+" "+str(optindex)
     os.system("Rscript "+Texomerpath+"/Texomer.R "+germlinename+" "+somaticname+" "+RNAname+" "+Texomerpath+" "+outpath+" "+str(optindex))
     os.chdir(outpath)
     os.system("rm -r temp")

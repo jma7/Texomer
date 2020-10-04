@@ -531,10 +531,11 @@ sequenzRun<-function(data,sample,chromosome){
 }
 
 ###DNArun: get final result at the DNA level
-outputTitanSegments <- function(results, id, convergeParams, filename = NULL, igvfilename = NULL){
+outputTitanSegments <- function(allresults, id, convergeParams, filename = NULL, igvfilename = NULL){
 	# get all possible states in this set of results
-	stateTable <- unique(results[, c("TITANstate", "TITANcall")])
-	rownames(stateTable) <- stateTable[, 1]
+	results=allresults$results	
+	# stateTable <- unique(results[, c("TITANstate", "TITANcall")])
+	# rownames(stateTable) <- stateTable[, 1]
 	rleResults <- t(sapply(unique(results$Chr), function(x){
 						ind <- results$Chr == x
 						r <- rle(results$TITANstate[ind])
@@ -542,7 +543,6 @@ outputTitanSegments <- function(results, id, convergeParams, filename = NULL, ig
 	rleLengths <- unlist(rleResults[, "lengths"])
 	rleValues <- unlist(rleResults[, "values"])
 	numSegs <- length(rleLengths)
-
 	# convert allelic ratio to symmetric ratios #
 	results$AllelicRatio <- apply(cbind(results$AllelicRatio, 1-results$AllelicRatio), 1, max, na.rm = TRUE)
 
@@ -663,10 +663,14 @@ TITANout<-function(DNAinput,chromosome){
 	write.table(titandata,"TITAN.input",col.names=TRUE,row.names=FALSE,sep="\t",quote=FALSE)
 	numClusters <- 2
 	params <- loadDefaultParameters(copyNumber=5,numberClonalClusters=numClusters)
-	data <- loadAlleleCounts("TITAN.input")
+	data <- loadAlleleCounts(titandata)
+	# data <- loadAlleleCounts("TITAN.input")
 	data$logR=log((DNAinput$refNumT+DNAinput$altNumT)/(DNAinput$refNumN+DNAinput$altNumN),base=10)
-	convergeParams <- runEMclonalCN(data,gParams=params$genotypeParams,nParams=params$normalParams,
-			pParams=params$ploidyParams,sParams=params$cellPrevParams,maxiter=20,maxiterUpdate=1500,
+	# convergeParams <- runEMclonalCN(data,gParams=params$genotypeParams,nParams=params$normalParams,
+	# 		pParams=params$ploidyParams,sParams=params$cellPrevParams,maxiter=20,maxiterUpdate=1500,
+	# 		txnExpLen=1e15,txnZstrength=1e5,useOutlierState=FALSE,normalEstimateMethod="map",
+	# 		estimateS=TRUE,estimatePloidy=TRUE)
+	convergeParams <- runEMclonalCN(data,params,maxiter=20,maxiterUpdate=1500,
 			txnExpLen=1e15,txnZstrength=1e5,useOutlierState=FALSE,normalEstimateMethod="map",
 			estimateS=TRUE,estimatePloidy=TRUE)
 	optimalPath <- viterbiClonalCN(data,convergeParams)
@@ -717,15 +721,19 @@ DNACNA<-function(DNAinput,sample,tempth,chromosome,method){
 	if (method=="ASCAT"){
 		print.noquote("Run germline data")
 		ASCATres<-try(ASCATrun(DNAinput,sample,chromosome),silent=TRUE)
+		print("Done ASCAT")
 		return(ASCATres)
 	}else if (method=="TITAN"){
+		print("Run TITAN")
 		registerDoMC(cores = 4)
 		TITANres<-try(TITANout(DNAinput=DNAinput,chromosome=chromosome),silent=TRUE)
 		return (TITANres)
 	}else if (method == "FACETS"){
+		print("Run FACETS")
 		FACETSres<-try(FACETSout(DNAinput=DNAinput),silent=TRUE)
 		return (FACETSres)
 	}else if (method == "sequenz"){
+		print("Run sequenz")
 		sequenzres<-try(sequenzRun(data=DNAinput,sample=sample,chromosome=chromosome),silent=TRUE)
 		return (sequenzres)
 	}
@@ -1032,8 +1040,8 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath, optindex){
 		#alength=nchar(as.character(DNAinput$alt))
 		#DNAinput=DNAinput[rlength==1&alength==1,]
 		setwd(temppath)
-		#methods=c("ASCAT","TITAN","FACETS","sequenz")
-		methods=c("ASCAT","FACETS","sequenz")
+		#methods=c("FACETS")
+		methods=c("ASCAT","TITAN","FACETS","sequenz")
 		somaticdata=read.csv(somaticinput,header=TRUE,sep="\t")
 		colnames(somaticdata)=c("chr","pos","ref","alt","refNumN","altNumN","refNumT","altNumT")
 		somaticdata$Tsum=somaticdata$altNumT+somaticdata$refNumT
@@ -1044,6 +1052,7 @@ DNArun1<-function(SNPinput,somaticinput,sample,temppath, optindex){
 		#somaticdata=somaticdata[rlength==1&alength==1,]
 		registerDoMC(cores = 4)
 		times=1000
+		print("run DNACNA")
 		res=foreach(i = 1:length(methods)) %dopar% DNACNA(DNAinput=DNAinput,sample=sample,tempth=temppath,chromosome=chromosome,methods[i])
 		newmethod=c()
 		newres=list()
